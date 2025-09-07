@@ -1,105 +1,55 @@
 import { useState, useEffect } from "react";
 import { Patient, CreatePatientRequest, UpdatePatientRequest } from "@/types/patient";
 
-// Mock API service - in a real app, this would connect to your Spring Boot backend
+// ✅ CHANGE: Added API base URL for your Spring Boot backend
+// When deployed, replace "http://localhost:8080" with your server's public URL.
+const API_URL = "http://localhost:8080/api/patients";
+
+// ✅ CHANGE: PatientService now makes real API calls (fetch)
+// ❌ REMOVED: All localStorage logic & mock delay
 class PatientService {
-  private patients: Patient[] = [];
-  private nextId = 1;
-
-  constructor() {
-    // Load from localStorage if available
-    const stored = localStorage.getItem('hospital-patients');
-    if (stored) {
-      this.patients = JSON.parse(stored);
-      this.nextId = Math.max(...this.patients.map(p => parseInt(p.id)), 0) + 1;
-    }
-  }
-
-  private saveToStorage() {
-    localStorage.setItem('hospital-patients', JSON.stringify(this.patients));
-  }
-
   async getAllPatients(): Promise<Patient[]> {
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 300));
-    return [...this.patients];
+    const response = await fetch(API_URL);
+    if (!response.ok) throw new Error("Failed to fetch patients");
+    return response.json();
   }
 
   async getPatientById(id: string): Promise<Patient | null> {
-    await new Promise(resolve => setTimeout(resolve, 100));
-    return this.patients.find(p => p.id === id) || null;
+    const response = await fetch(`${API_URL}/${id}`);
+    if (response.status === 404) return null; // ✅ CHANGE: Handle 404 explicitly
+    if (!response.ok) throw new Error("Failed to fetch patient");
+    return response.json();
   }
 
   async createPatient(data: CreatePatientRequest): Promise<Patient> {
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
-    // Check for duplicate Aadhar card
-    if (this.patients.some(p => p.aadharCard === data.aadharCard)) {
-      throw new Error('Patient with this Aadhar card already exists');
-    }
-
-    // Check for duplicate phone number
-    if (this.patients.some(p => p.phoneNumber === data.phoneNumber)) {
-      throw new Error('Patient with this phone number already exists');
-    }
-
-    const newPatient: Patient = {
-      ...data,
-      id: this.nextId.toString(),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-
-    this.patients.push(newPatient);
-    this.nextId++;
-    this.saveToStorage();
-    
-    return newPatient;
+    const response = await fetch(API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data), // ✅ CHANGE: Send JSON payload
+    });
+    if (!response.ok) throw new Error("Failed to create patient");
+    return response.json();
   }
 
   async updatePatient(data: UpdatePatientRequest): Promise<Patient> {
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
-    const index = this.patients.findIndex(p => p.id === data.id);
-    if (index === -1) {
-      throw new Error('Patient not found');
-    }
-
-    // Check for duplicate Aadhar card (excluding current patient)
-    if (data.aadharCard && this.patients.some(p => p.id !== data.id && p.aadharCard === data.aadharCard)) {
-      throw new Error('Another patient with this Aadhar card already exists');
-    }
-
-    // Check for duplicate phone number (excluding current patient)
-    if (data.phoneNumber && this.patients.some(p => p.id !== data.id && p.phoneNumber === data.phoneNumber)) {
-      throw new Error('Another patient with this phone number already exists');
-    }
-
-    const updatedPatient: Patient = {
-      ...this.patients[index],
-      ...data,
-      updatedAt: new Date().toISOString(),
-    };
-
-    this.patients[index] = updatedPatient;
-    this.saveToStorage();
-    
-    return updatedPatient;
+    const response = await fetch(`${API_URL}/${data.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data), // ✅ CHANGE: Send JSON payload for updates
+    });
+    if (!response.ok) throw new Error("Failed to update patient");
+    return response.json();
   }
 
   async deletePatient(id: string): Promise<void> {
-    await new Promise(resolve => setTimeout(resolve, 300));
-    
-    const index = this.patients.findIndex(p => p.id === id);
-    if (index === -1) {
-      throw new Error('Patient not found');
-    }
-
-    this.patients.splice(index, 1);
-    this.saveToStorage();
+    const response = await fetch(`${API_URL}/${id}`, {
+      method: "DELETE", // ✅ CHANGE: Use DELETE method
+    });
+    if (!response.ok) throw new Error("Failed to delete patient");
   }
 }
 
+// ✅ SAME: Instantiate the service
 const patientService = new PatientService();
 
 export function usePatients() {
@@ -107,6 +57,7 @@ export function usePatients() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // ✅ SAME: Fetch patients from backend instead of localStorage
   const fetchPatients = async () => {
     try {
       setLoading(true);
@@ -114,7 +65,7 @@ export function usePatients() {
       const data = await patientService.getAllPatients();
       setPatients(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch patients');
+      setError(err instanceof Error ? err.message : "Failed to fetch patients");
     } finally {
       setLoading(false);
     }
@@ -123,29 +74,29 @@ export function usePatients() {
   const createPatient = async (data: CreatePatientRequest) => {
     try {
       const newPatient = await patientService.createPatient(data);
-      setPatients(prev => [newPatient, ...prev]);
+      setPatients(prev => [newPatient, ...prev]); // ✅ CHANGE: Add newly created patient from backend
       return newPatient;
     } catch (err) {
-      throw new Error(err instanceof Error ? err.message : 'Failed to create patient');
+      throw new Error(err instanceof Error ? err.message : "Failed to create patient");
     }
   };
 
   const updatePatient = async (data: UpdatePatientRequest) => {
     try {
       const updatedPatient = await patientService.updatePatient(data);
-      setPatients(prev => prev.map(p => p.id === data.id ? updatedPatient : p));
+      setPatients(prev => prev.map(p => p.id === data.id ? updatedPatient : p)); // ✅ CHANGE: Replace updated patient
       return updatedPatient;
     } catch (err) {
-      throw new Error(err instanceof Error ? err.message : 'Failed to update patient');
+      throw new Error(err instanceof Error ? err.message : "Failed to update patient");
     }
   };
 
   const deletePatient = async (id: string) => {
     try {
       await patientService.deletePatient(id);
-      setPatients(prev => prev.filter(p => p.id !== id));
+      setPatients(prev => prev.filter(p => p.id !== id)); // ✅ CHANGE: Remove deleted patient
     } catch (err) {
-      throw new Error(err instanceof Error ? err.message : 'Failed to delete patient');
+      throw new Error(err instanceof Error ? err.message : "Failed to delete patient");
     }
   };
 
@@ -153,10 +104,11 @@ export function usePatients() {
     try {
       return await patientService.getPatientById(id);
     } catch (err) {
-      throw new Error(err instanceof Error ? err.message : 'Failed to get patient');
+      throw new Error(err instanceof Error ? err.message : "Failed to get patient");
     }
   };
 
+  // ✅ SAME: Auto-fetch patients when component mounts
   useEffect(() => {
     fetchPatients();
   }, []);
